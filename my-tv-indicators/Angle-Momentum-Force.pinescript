@@ -1,0 +1,45 @@
+//@version=5
+indicator("Angle-Momentum-Force v2 [Alex Ko]", overlay=false)
+
+// === Входные параметры с подсказками ===
+lengthEMA = input.int(
+    20,
+    title="EMA Period",
+    tooltip="Период экспоненциальной скользящей средней (EMA), по которой рассчитывается угол атаки. Меньше — чувствительнее, больше — сглаженнее."
+)
+
+lengthMomentum = input.int(
+    10,
+    title="Momentum Period",
+    tooltip="За сколько баров назад сравнивается цена, чтобы вычислить моментум (price - price[n]). Показывает силу текущего импульса."
+)
+
+thresholdForce = input.float(
+    1e8,
+    title="Force Threshold",
+    step=1e6,
+    tooltip="Порог силы движения (объём × моментум). При превышении этого значения и выполнении остальных условий появляется сигнал на покупку."
+)
+
+// === Расчёты ===
+emaLine = ta.ema(close, lengthEMA)
+delta = emaLine - emaLine[1]
+angle = math.atan(delta) * 180 / math.pi
+
+momentum = ta.mom(close, lengthMomentum)
+volumeForce = momentum * volume
+
+// === Визуализация угла атаки ===
+angleColor = angle >= 0 ? color.green : color.red
+plot(angle, title="Угол Атаки", color=angleColor, linewidth=2)
+hline(0, 'Ноль', color=color.gray, linestyle=hline.style_dashed)
+
+// === Визуализация моментума и силы ===
+plot(momentum, title="Моментум", color=color.orange, linewidth=1)
+plot(volumeForce, title="Сила", color=color.teal, linewidth=1)
+
+// === Условия входа ===
+longCondition = angle > 20 and momentum > 0 and volumeForce > thresholdForce
+
+// === Цвет фона при сигнале (не на свечах, а в подграфике) ===
+bgcolor(longCondition ? color.new(color.green, 85) : na)
