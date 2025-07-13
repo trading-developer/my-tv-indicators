@@ -1,0 +1,106 @@
+//@version=5
+indicator("Advanced Profit/Loss and Risk Calculator for Trading [Alex Ko]", overlay=true)
+
+// ==== Вводы пользователя ====
+dir           = input.string("Long", title="Тип сделки", options=["Long", "Short"])
+entry         = input.float(0.055, title="Цена входа")
+exit_target   = input.float(-1.0, title="Целевая цена выхода (необязательно)")
+target_usd    = input.float(100, title="Желаемая прибыль $ (PnL)")
+risk_pct      = input.float(1, title="Риск % от капитала")
+leverage      = input.int(5, title="Плечо (x)")
+manual_capital = input.float(500, title="Начальный капитал $ (если не рассчитываем)")
+
+has_exit = exit_target > 0
+
+// ==== Целевая цена выхода ====
+float profit_price = na
+profit_price := has_exit ? exit_target : na
+
+// ==== Расчёт прибыли в % (если цена цели задана вручную) ====
+float target_pct_of_entry = na
+if has_exit
+    target_pct_of_entry := dir == "Long" ? (profit_price - entry) / entry * 100 : (entry - profit_price) / entry * 100
+
+// ==== Расчёт капитала по целевой цене и прибыли ====
+float capital = manual_capital
+if has_exit and not na(target_usd)
+    position_pnl_pct = target_pct_of_entry
+    capital := target_usd / (position_pnl_pct / 100 * leverage)
+
+// ==== Обратный расчёт TP цены, если не указана ====
+if not has_exit
+    position_size_usd = capital * leverage
+    profit_pct_of_pos = (target_usd / position_size_usd) * 100
+    profit_price := dir == "Long" ? entry + (entry * profit_pct_of_pos / 100)
+                                  : entry - (entry * profit_pct_of_pos / 100)
+
+// ==== Стоп, риск, ликвидация ====
+position_size_usd = capital * leverage
+risk_usd = capital * (risk_pct / 100)
+risk_pct_of_pos = (risk_usd / position_size_usd) * 100
+stop_price = dir == "Long" ? entry - (entry * risk_pct_of_pos / 100)
+                           : entry + (entry * risk_pct_of_pos / 100)
+liq_price = dir == "Long" ? entry * leverage / (leverage + 1)
+                          : entry * leverage / (leverage - 1)
+
+// ==== Жирные линии ====
+plot(entry, color=color.gray, title="Вход", linewidth=3)
+plot(stop_price, color=color.red, title="Стоп", linewidth=3)
+plot(profit_price, color=color.green, title="Цель", linewidth=3)
+plot(liq_price, color=color.purple, title="Ликвидация", linewidth=3)
+
+// ==== Подписи справа ====
+label lbl_entry = na
+label lbl_stop = na
+label lbl_profit = na
+label lbl_liq = na
+
+if (na(lbl_entry))
+    lbl_entry := label.new(bar_index+20, entry, "Вход", style=label.style_label_left, textcolor=color.white)
+    lbl_stop := label.new(bar_index+20, stop_price, "Стоп", style=label.style_label_left, textcolor=color.white)
+    lbl_profit := label.new(bar_index+20, profit_price, "Цель $" + str.tostring(target_usd), style=label.style_label_left, textcolor=color.white)
+    lbl_liq := label.new(bar_index+20, liq_price, "Ликвидация", style=label.style_label_left, textcolor=color.white)
+else
+    label.set_xy(lbl_entry, bar_index+20, entry)
+    label.set_xy(lbl_stop, bar_index+20, stop_price)
+    label.set_xy(lbl_profit, bar_index+20, profit_price)
+    label.set_xy(lbl_liq, bar_index+20, liq_price)
+
+    label.set_text(lbl_entry, "Вход")
+    label.set_text(lbl_stop, "Стоп")
+    label.set_text(lbl_profit, "Цель $" + str.tostring(target_usd))
+    label.set_text(lbl_liq, "Ликвидация")
+
+// ==== Таблица расчётов ====
+table t = table.new(position.bottom_right, 2, 10, border_width=1)
+if bar_index % 10 == 0
+    table.cell(t, 0, 0, "Показатель", text_color=color.white, bgcolor=color.gray)
+    table.cell(t, 1, 0, "Значение", text_color=color.white, bgcolor=color.gray)
+
+    table.cell(t, 0, 1, "Тип сделки", text_color=color.white, bgcolor=color.gray)
+    table.cell(t, 1, 1, dir)
+
+    table.cell(t, 0, 2, "Цена входа", text_color=color.white, bgcolor=color.gray)
+    table.cell(t, 1, 2, str.tostring(entry, "#.#####"))
+
+    table.cell(t, 0, 3, "Цена выхода", text_color=color.white, bgcolor=color.gray)
+    table.cell(t, 1, 3, str.tostring(profit_price, "#.#####"))
+
+    table.cell(t, 0, 4, "Целевая прибыль $", text_color=color.white, bgcolor=color.gray)
+    table.cell(t, 1, 4, "$" + str.tostring(target_usd))
+
+    table.cell(t, 0, 5, "Расчётный депозит $", text_color=color.white, bgcolor=color.gray)
+    table.cell(t, 1, 5, "$" + str.tostring(capital, "#.##"))
+
+    table.cell(t, 0, 6, "Позиция $", text_color=color.white, bgcolor=color.gray)
+    table.cell(t, 1, 6, "$" + str.tostring(position_size_usd, "#.##"))
+
+    table.cell(t, 0, 7, "Риск $", text_color=color.white, bgcolor=color.gray)
+    table.cell(t, 1, 7, "$" + str.tostring(risk_usd, "#.##"))
+
+    table.cell(t, 0, 8, "Ликвидация", text_color=color.white, bgcolor=color.gray)
+    table.cell(t, 1, 8, str.tostring(liq_price, "#.#####"))
+
+    rr = math.abs((profit_price - entry) / (entry - stop_price))
+    table.cell(t, 0, 9, "R:R", text_color=color.white, bgcolor=color.gray)
+    table.cell(t, 1, 9, str.tostring(rr, "#.##"))
