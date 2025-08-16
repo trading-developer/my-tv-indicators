@@ -1,0 +1,103 @@
+//@version=5
+indicator("VSA Signal Strength Clean [Alex Ko]", overlay=false)
+
+len = input.int(10, title="Период анализа")
+smooth = input.int(3, title="Сглаживание сигнала")
+
+spread = high - low
+spread_avg = ta.sma(spread, len)
+vol_avg = ta.sma(volume, len)
+close_rel = (close - low) / math.max(spread, 0.00001)
+
+signal = 0.0
+
+// === VSA Conditions ===
+nd = close > open and volume < vol_avg * 0.7 and spread < spread_avg and close_rel > 0.7
+ut = close < open and volume > vol_avg * 1.2 and spread > spread_avg and close_rel < 0.3
+ns = close < open and volume < vol_avg * 0.7 and spread < spread_avg and close_rel < 0.3
+sv = close < open and volume > vol_avg * 1.5 and close_rel > 0.5
+bc = close > open and volume > vol_avg * 2 and spread > spread_avg and close_rel < 0.5
+sc = close < open and volume > vol_avg * 2 and spread > spread_avg and close_rel > 0.5
+
+signal := nd or ut or bc ? -1 : signal
+signal := ns or sv or sc ? 1 : signal
+
+vsa_line = ta.sma(signal, smooth)
+plot(vsa_line, title="VSA Сигнал", color=color.orange, linewidth=2)
+hline(0, "0", color=color.gray)
+
+// === Подписи (одна на бар) ===
+plotshape(nd, title="ND", location=location.abovebar, text="ND (нет спроса)", style=shape.labeldown, color=color.red, textcolor=color.white, size=size.tiny)
+plotshape(ut, title="UT", location=location.abovebar, text="UT (ложный пробой вверх (слабость))", style=shape.labeldown, color=color.red, textcolor=color.white, size=size.tiny)
+plotshape(ns, title="NS", location=location.belowbar, text="NS (нет предложения)", style=shape.labelup, color=color.green, textcolor=color.white, size=size.tiny)
+plotshape(sv, title="SV", location=location.belowbar, text="SV (остановка объёма)", style=shape.labelup, color=color.green, textcolor=color.white, size=size.tiny)
+plotshape(bc, title="BC", location=location.abovebar, text="BC (кульминация покупок)", style=shape.labeldown, color=color.red, textcolor=color.white, size=size.tiny)
+plotshape(sc, title="SC", location=location.belowbar, text="SC (кульминация продаж)", style=shape.labelup, color=color.green, textcolor=color.white, size=size.tiny)
+
+// === Рекомендация по последним 3 барам ===
+s1 = vsa_line
+s2 = vsa_line[1]
+s3 = vsa_line[2]
+recommend = s1 + s2 + s3
+
+text_out = recommend >= 2 ? "ПОКУПАТЬ 🟢" : recommend <= -2 ? "ПРОДАВАТЬ 🔴" : "ЖДАТЬ ⚪"
+
+label.new(bar_index, vsa_line, text_out,
+     xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left,
+     color=color.gray, textcolor=color.white, size=size.normal, tooltip="Рекомендация по VSA")
+
+
+// === Таблица описания VSA сигналов (по-русски)
+var table vsaTable = table.new(position.top_right, 2, 7, border_width=1)
+
+if bar_index % 20 == 0  // Обновлять не на каждом баре
+    table.cell(vsaTable, 0, 0, "Сигнал", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    table.cell(vsaTable, 1, 0, "Значение", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+
+    table.cell(vsaTable, 0, 1, "ND", text_color=color.red)
+    table.cell(vsaTable, 1, 1, "Нет спроса (слабость)", text_color=color.red)
+
+    table.cell(vsaTable, 0, 2, "UT", text_color=color.red)
+    table.cell(vsaTable, 1, 2, "Ап-траст (ловушка вверх)", text_color=color.red)
+
+    table.cell(vsaTable, 0, 3, "BC", text_color=color.red)
+    table.cell(vsaTable, 1, 3, "Кульминация покупок", text_color=color.red)
+
+    table.cell(vsaTable, 0, 4, "NS", text_color=color.green)
+    table.cell(vsaTable, 1, 4, "Нет предложения (сила)", text_color=color.green)
+
+    table.cell(vsaTable, 0, 5, "SV", text_color=color.green)
+    table.cell(vsaTable, 1, 5, "Остановка объёма", text_color=color.green)
+
+    table.cell(vsaTable, 0, 6, "SC", text_color=color.green)
+    table.cell(vsaTable, 1, 6, "Кульминация продаж", text_color=color.green)
+
+// === Динамическая таблица последнего сигнала
+var table liveTable = table.new(position.bottom_right, 2, 3, border_width=1)
+
+// Определение последнего сигнала
+lastSignal = nd ? "ND" :
+             ut ? "UT" :
+             bc ? "BC" :
+             ns ? "NS" :
+             sv ? "SV" :
+             sc ? "SC" : "—"
+
+// Расшифровка по-русски
+lastDesc = nd ? "Нет спроса (слабость)" : ut ? "Ап-траст (ложный пробой)" : bc ? "Кульминация покупок" : ns ? "Нет предложения (сила)" : sv ? "Остановка объёма" : sc ? "Кульминация продаж" : "Нет сигнала"
+
+// Рекомендация (анализ последних 3 сигналов)
+r = s1 + s2 + s3
+recommend_text = r >= 2 ? "ПОКУПАТЬ 🟢" :
+                 r <= -2 ? "ПРОДАВАТЬ 🔴" : "ЖДАТЬ ⚪"
+
+// Отображение таблицы
+if bar_index % 1 == 0
+    table.cell(liveTable, 0, 0, "Сигнал", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    table.cell(liveTable, 1, 0, lastSignal, text_color=color.white, bgcolor=color.gray)
+
+    table.cell(liveTable, 0, 1, "Описание", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    table.cell(liveTable, 1, 1, lastDesc, text_color=color.white,bgcolor=color.gray)
+
+    table.cell(liveTable, 0, 2, "Рекомендация", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    table.cell(liveTable, 1, 2, recommend_text, text_color=color.white,bgcolor=color.gray)

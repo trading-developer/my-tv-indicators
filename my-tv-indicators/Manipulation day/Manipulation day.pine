@@ -1,0 +1,45 @@
+//@version=5
+indicator("Manipulation Day [Alex Ko]", overlay=true)
+
+manipulationDay = input.string("Monday", options=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], title="Manipulation Day")
+daysAfter = input.int(5, "Days After Manipulation")
+
+manipDay = switch manipulationDay
+    "Monday" => dayofweek.monday
+    "Tuesday" => dayofweek.tuesday
+    "Wednesday" => dayofweek.wednesday
+    "Thursday" => dayofweek.thursday
+    "Friday" => dayofweek.friday
+    "Saturday" => dayofweek.saturday
+    "Sunday" => dayofweek.sunday
+
+var float entryOpen = na
+var float exitClose = na
+var int entryBar = na
+var int counter = 0
+var string entryDate = ""
+
+isManipDay = dayofweek == manipDay and not na(close[1])
+isBullishManipDay = isManipDay and close > open
+isBearishManipDay = isManipDay and close < open
+
+plotshape(isBullishManipDay, location=location.belowbar, style=shape.triangleup, color=color.green, size=size.small, title="Bullish Manip Day ↑")
+plotshape(isBearishManipDay, location=location.abovebar, style=shape.triangledown, color=color.red, size=size.small, title="Bearish Manip Day ↓")
+
+// === Detect manipulation day
+if isManipDay
+    counter := 1
+    entryOpen := open
+    exitClose := na
+    entryBar := bar_index
+    entryDate := str.format("{0,date,yyyy-MM-dd}", time)
+
+// === Wait for N bars after
+if counter > 0
+    counter += 1
+    if counter == daysAfter + 1
+        exitClose := close
+        colorLine = exitClose > entryOpen ? color.green : color.red
+        line.new(entryBar, entryOpen, bar_index, exitClose, color=colorLine, width=2)
+        label.new(bar_index, exitClose, text="Δ: " + str.tostring(exitClose - entryOpen), style=label.style_label_left, color=colorLine, textcolor=color.white)
+        counter := 0
