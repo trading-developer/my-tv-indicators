@@ -1,0 +1,62 @@
+//@version=5
+indicator("USDT ETH Printer Days [AlexKo]", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// === SETTINGS ===
+minAbs   = input.float(5e6, "Min. absolute value (USDT)", step=1e6)
+showLine = input.bool(true,  "Show vertical line")
+showLbl  = input.bool(true,  "Show label with amount")
+onlyKind = input.string("All", "Event filter", options=["All","Mint only","Redeem only"])
+lblPos   = input.string("Auto", "Label position", options=["Auto","Top","Bottom"])
+
+// === INSERT DATA FROM PYTHON ===
+var int[]   evTs    = array.from( 1675728000000,1677888000000,1678752000000,1678924800000,1679616000000,1681948800000,1686528000000,1686787200000,1686873600000,1687219200000,1699488000000,1701043200000,1703462400000,1704326400000,1704758400000,1708387200000,1709424000000,1709856000000,1709942400000,1712275200000,1713484800000,1716249600000,1723507200000,1724112000000,1726444800000,1730851200000,1731024000000,1731110400000,1731283200000,1731456000000,1731542400000,1731888000000,1731974400000,1732060800000,1732233600000,1732320000000,1732838400000,1733097600000,1733356800000,1733443200000,1733875200000,1733961600000,1740700800000,1740873600000,1744416000000,1745193600000,1745884800000,1747785600000,1750204800000,1751500800000,1752624000000,1752710400000,1753315200000,1755216000000 )
+var float[] evDelta = array.from(-2000000000.0,2000000000.0,1000000000.0,1000000000.0,1000000000.0,1000000000.0,1000000000.0,250000000.0,1250000000.0,250000000.0,1000000000.0,1000000000.0,1000000000.0,1000000000.0,1000000000.0,1000000000.0,1000000000.0,1000000000.0,2000000000.0,1000000000.0,1000000000.0,1000000000.0,1000000000.0,1000000000.0,1000000000.0,2000000000.0,1000000000.0,1000000000.0,2000000000.0,1000000000.0,1000000000.0,2000000000.0,1000000000.0,1000000000.0,1000000000.0,2000000000.0,1000000000.0,1000000000.0,1000000000.0,2000000000.0,1000000000.0,1000000000.0,-2000000000.0,1000000000.0,-1800000000.0,-1500000000.0,2000000000.0,-1500000000.0,1000000000.0,1000000000.0,2000000000.0,1000000000.0,2000000000.0,1000000000.0)
+
+// === HELPERS ===
+f_fmt(n) =>
+    absn = math.abs(n)
+    absn >= 1e9 ? str.tostring(n/1e9, "#.##")+"B" :
+      absn >= 1e6 ? str.tostring(n/1e6, "#.##")+"M" :
+      absn >= 1e3 ? str.tostring(n/1e3, "#.##")+"K" :
+      str.tostring(n, "#")
+
+f_passKind(x) =>
+    onlyKind == "All" or (onlyKind=="Mint only" and x>0) or (onlyKind=="Redeem only" and x<0)
+
+// === CORE LOGIC ===
+// evTs must contain UTC midnight timestamps (ms), one per event day
+float evToday = na
+bool  found   = false
+
+if array.size(evTs) == array.size(evDelta)
+    for i = 0 to array.size(evTs)-1
+        if time("D") == array.get(evTs, i)
+            _d = array.get(evDelta, i)
+            if math.abs(_d) >= minAbs and f_passKind(_d)
+                evToday := _d
+                found := true
+                break
+
+// === DRAWING ===
+if found
+    clr = evToday > 0 ? color.new(color.teal, 0) : color.new(color.red, 0)
+
+    if showLine
+        line.new(bar_index, low, bar_index, high,
+          extend=extend.none, color=color.new(clr, 65), width=2, style=line.style_dotted)
+
+    if showLbl
+        dirTxt = evToday > 0 ? "Mint +" : "Redeem "
+        y = lblPos=="Top" ? high : lblPos=="Bottom" ? low : na
+        yAuto = evToday > 0 ? high : low
+        yy = lblPos=="Auto" ? yAuto : y
+        label.new(bar_index, yy, dirTxt + f_fmt(evToday), style = evToday>0 ? label.style_label_down : label.style_label_up, textcolor = color.white, color = clr)
+
+// === ALERT ===
+alertcondition(found, title="USDT ETH Printer Event", message="USDT printer event on Ethereum network at this bar")
+
+// === OPTIONAL: Printer Pressure EMA ===
+// Shows EMA of event values as “printer pressure” at the bottom panel
+len = input.int(7, "Printer pressure EMA (days)", minval=1)
+seriesEv = found ? evToday : 0.0
+plot(ta.ema(seriesEv, len), color=color.new(color.silver, 0), linewidth=2, title="Printer pressure (EMA)")
